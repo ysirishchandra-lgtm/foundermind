@@ -1,0 +1,48 @@
+{
+  "models": [
+    {
+      "name": "gpt-4o-mini",
+      "provider": "openai",
+      "costPerInputToken": 0.00000015,
+      "costPerOutputToken": 0.0000006,
+      "maxTokens": 128000,
+      "fallback": "gpt-4"
+    },
+    {
+      "name": "gpt-4o",
+      "provider": "openai",
+      "costPerInputToken": 0.0000025,
+      "costPerOutputToken": 0.000010,
+      "maxTokens": 128000,
+      "fallback": "gpt-4o-mini"
+    }
+  ],
+  "routingRules": [
+    {
+      "name": "greetings",
+      "pattern": "^(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo)(\\s.*)?$",
+      "model": "gpt-4o-mini",
+      "reason": "Greeting queries require minimal reasoning and can be handled by a lightweight model."
+    },
+    {
+      "name": "strategy",
+      "keywords": ["pitch", "deck", "vc", "sequoia", "strategy", "investor", "raise", "fundraising", "financial", "arr", "revenue", "valuation", "mrr", "cap table", "business plan"],
+      "model": "gpt-4o",
+      "reason": "Complex startup business strategy, fundraising, and financial tasks require advanced reasoning from a flagship model."
+    },
+    {
+      "name": "long_context",
+      "minHistoryLength": 8,
+      "model": "gpt-4o",
+      "reason": "Conversations with deep history require higher capability models for consistency and context adherence."
+    },
+    {
+      "name": "default",
+      "model": "gpt-4o-mini",
+      "reason": "General query routed to cost-effective default model."
+    }
+  ],
+  "budgets": {
+    "dailyLimitUSD": 5.0
+  }
+}
