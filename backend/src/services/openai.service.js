@@ -62,7 +62,7 @@ class OpenAIService {
           model: selectedModel,
           messages,
           temperature: 0.3,
-          max_tokens: 128,
+          max_tokens: 300,
         });
 
         const choice = completion.choices[0];

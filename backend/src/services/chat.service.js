@@ -115,15 +115,15 @@ class ChatService {
    *   const { content, model } = gen.return().value (captured internally)
    */
   async *streamMessage(userId, conversationId, history, userMessage) {
-    // Step 1: Recall memory context from Hindsight
-    const memoryContext = await hindsightService.recallMemory(userId, userMessage);
+    // Step 1: Run Hindsight recall and model routing in parallel for speed
+    const [memoryContext, routingDecision] = await Promise.all([
+      hindsightService.recallMemory(userId, userMessage),
+      Promise.resolve(cascadeflowService.routeRequest(userMessage, history)),
+    ]);
     const memoryPrefix  = buildMemoryPrefix(memoryContext);
+    const selectedModel = routingDecision.model;
 
-    // Step 2: Route model
-    const routingDecision = cascadeflowService.routeRequest(userMessage, history);
-    const selectedModel   = routingDecision.model;
-
-    // Step 3: Build messages
+    // Step 2: Build messages
     const systemContent = memoryPrefix
       ? SYSTEM_PROMPT + '\n\n' + memoryPrefix
       : SYSTEM_PROMPT;
