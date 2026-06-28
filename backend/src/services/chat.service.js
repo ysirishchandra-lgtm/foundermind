@@ -115,9 +115,10 @@ class ChatService {
    *   const { content, model } = gen.return().value (captured internally)
    */
   async *streamMessage(userId, conversationId, history, userMessage) {
-    // Step 1: Recall memory
-    const memoryContext = await hindsightService.recallMemory(userId, userMessage);
-    const memoryPrefix  = buildMemoryPrefix(memoryContext);
+    // Step 1: Skip memory recall for streaming (eliminates ~1-2s pre-generation delay)
+    // Memory is still retained after the response for future sessions
+    const memoryContext = [];
+    const memoryPrefix  = '';
 
     // Step 2: Route model
     const routingDecision = cascadeflowService.routeRequest(userMessage, history);
