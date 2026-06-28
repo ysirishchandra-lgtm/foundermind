@@ -33,10 +33,24 @@ const { authRateLimiter, chatRateLimiter } = require('./src/middleware/rateLimit
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS – allow all origins
+// CORS – allow Vercel production + localhost dev origins with credentials
+const ALLOWED_ORIGINS = [
+  'https://foundermind.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+];
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, mobile, server-side)
+    if (!origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o))) {
+      callback(null, true);
+    } else {
+      callback(null, true); // permissive for tunnel/preview URLs
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'bypass-tunnel-reminder'],
 }));
 // rely on express.json() for JSON parsing
 

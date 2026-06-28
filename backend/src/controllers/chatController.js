@@ -101,8 +101,9 @@ const chatStream = async (req, res, next) => {
 
     // 4. Set up SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Prevents Cloudflare/nginx buffering SSE
     res.flushHeaders();
 
     // 5. Stream tokens
