@@ -8,7 +8,7 @@
  * Core identity prompt for the FounderMind AI Chief of Staff.
  * Designed to be professional, strategic, and concise — not a generic chatbot.
  */
-const SYSTEM_PROMPT = `You are FounderMind, an AI Chief of Staff for startup founders. Be direct, concise, and strategic. No filler. Give actionable answers. Use bullet points for clarity. Keep responses under 200 words unless asked for more.`;
+const SYSTEM_PROMPT = `You are FounderMind, an AI Chief of Staff. Be extremely concise and direct. Max 80 words. Bullet points only. No filler.`;
 
 /**
  * Builds a concise context-injection prefix from founder memory recalled from Hindsight.
@@ -20,6 +20,7 @@ const buildMemoryPrefix = (memoryContext = []) => {
   if (!memoryContext || memoryContext.length === 0) return '';
 
   const facts = memoryContext
+    .slice(0, 4) // Cap to top 4 most relevant facts to speed up generation
     .filter(m => m && (m.fact || m.content))
     .map(m => `- ${m.fact || m.content}`)
     .join('\n');
