@@ -25,8 +25,8 @@ const chat = async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Access denied or conversation not found' });
     }
 
-    // 2. Load recent conversation history (last 20 messages for context window)
-    const historyResult = await messageService.listMessages(conversationId, userId, { page: 1, limit: 20 });
+    // 2. Load recent conversation history (last 5 messages for context window to increase speed)
+    const historyResult = await messageService.listMessages(conversationId, userId, { page: 1, limit: 5 });
     const history = historyResult?.data || [];
 
     // 3. Persist the user message immediately
@@ -89,8 +89,8 @@ const chatStream = async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Access denied or conversation not found' });
     }
 
-    // 2. Load history
-    const historyResult = await messageService.listMessages(conversationId, userId, { page: 1, limit: 20 });
+    // 2. Load history (last 5 messages for speed)
+    const historyResult = await messageService.listMessages(conversationId, userId, { page: 1, limit: 5 });
     const history = historyResult?.data || [];
 
     // 3. Persist user message immediately
