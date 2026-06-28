@@ -7,7 +7,7 @@
   ],
   "build": {
     "env": {
-      "VITE_API_URL": "https://enabling-william-coordination-sanyo.trycloudflare.com"
+      "VITE_API_URL": "https://honest-singers-fall.loca.lt"
     }
   }
 }
