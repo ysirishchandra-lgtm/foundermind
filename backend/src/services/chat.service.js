@@ -105,6 +105,73 @@ class ChatService {
   }
 
   /**
+   * Streaming variant of processMessage.
+   * Yields token chunks as they arrive, then returns the full metadata.
+   * The caller should persist messages AFTER consuming the generator.
+   *
+   * Usage:
+   *   const gen = chatService.streamMessage(userId, convId, history, msg);
+   *   for await (const token of gen) { res.write(...) }
+   *   const { content, model } = gen.return().value (captured internally)
+   */
+  async *streamMessage(userId, conversationId, history, userMessage) {
+    // Step 1: Recall memory
+    const memoryContext = await hindsightService.recallMemory(userId, userMessage);
+    const memoryPrefix  = buildMemoryPrefix(memoryContext);
+
+    // Step 2: Route model
+    const routingDecision = cascadeflowService.routeRequest(userMessage, history);
+    const selectedModel   = routingDecision.model;
+
+    // Step 3: Build messages
+    const systemContent = memoryPrefix
+      ? SYSTEM_PROMPT + '\n\n' + memoryPrefix
+      : SYSTEM_PROMPT;
+
+    const messages = [
+      { role: 'system', content: systemContent },
+      ...history.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: userMessage },
+    ];
+
+    // Step 4: Stream tokens from AI
+    let fullContent = '';
+    const startTime = Date.now();
+    const tokenStream = openaiService.streamResponse(messages, selectedModel);
+
+    for await (const token of tokenStream) {
+      fullContent += token;
+      yield token;
+    }
+
+    const latencyMs = Date.now() - startTime;
+
+    // Step 5: Background: retain memory & analytics
+    const retainContent = this._buildRetainContent(userMessage, fullContent);
+    hindsightService.retainMemory(userId, retainContent).catch(err =>
+      console.error('[Chat] Hindsight retain error (non-fatal):', err.message)
+    );
+    cascadeflowService.logAnalytics(userId, conversationId, {
+      modelUsed: selectedModel,
+      queryText: userMessage,
+      routingReason: routingDecision.reason,
+      latencyMs,
+    }).catch(err =>
+      console.error('[Chat] Analytics log error (non-fatal):', err.message)
+    );
+
+    // Return metadata so controller can persist the assistant message
+    return {
+      content: fullContent,
+      model: selectedModel,
+      tokens: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      latencyMs,
+    };
+  }
+
+  /**
    * Build a structured string for Hindsight to extract facts from.
    * @private
    */

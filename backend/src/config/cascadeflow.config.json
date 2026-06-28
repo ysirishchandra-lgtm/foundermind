@@ -1,48 +1,40 @@
 {
   "models": [
     {
-      "name": "gpt-4o-mini",
-      "provider": "openai",
-      "costPerInputToken": 0.00000015,
-      "costPerOutputToken": 0.0000006,
-      "maxTokens": 128000,
-      "fallback": "gpt-4"
-    },
-    {
-      "name": "gpt-4o",
-      "provider": "openai",
-      "costPerInputToken": 0.0000025,
-      "costPerOutputToken": 0.000010,
-      "maxTokens": 128000,
-      "fallback": "gpt-4o-mini"
+      "name": "qwen2.5-coder:1.5b",
+      "provider": "ollama",
+      "costPerInputToken": 0.0,
+      "costPerOutputToken": 0.0,
+      "maxTokens": 8192,
+      "fallback": "qwen2.5-coder:1.5b"
     }
   ],
   "routingRules": [
     {
       "name": "greetings",
       "pattern": "^(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo)(\\s.*)?$",
-      "model": "gpt-4o-mini",
-      "reason": "Greeting queries require minimal reasoning and can be handled by a lightweight model."
+      "model": "qwen2.5-coder:1.5b",
+      "reason": "Greeting queries can be handled by local model."
     },
     {
       "name": "strategy",
       "keywords": ["pitch", "deck", "vc", "sequoia", "strategy", "investor", "raise", "fundraising", "financial", "arr", "revenue", "valuation", "mrr", "cap table", "business plan"],
-      "model": "gpt-4o",
-      "reason": "Complex startup business strategy, fundraising, and financial tasks require advanced reasoning from a flagship model."
+      "model": "qwen2.5-coder:1.5b",
+      "reason": "Strategy tasks handled by local model."
     },
     {
       "name": "long_context",
       "minHistoryLength": 8,
-      "model": "gpt-4o",
-      "reason": "Conversations with deep history require higher capability models for consistency and context adherence."
+      "model": "qwen2.5-coder:1.5b",
+      "reason": "Long context conversations handled by local model."
     },
     {
       "name": "default",
-      "model": "gpt-4o-mini",
-      "reason": "General query routed to cost-effective default model."
+      "model": "qwen2.5-coder:1.5b",
+      "reason": "General query routed to local model."
     }
   ],
   "budgets": {
-    "dailyLimitUSD": 5.0
+    "dailyLimitUSD": 0.0
   }
 }

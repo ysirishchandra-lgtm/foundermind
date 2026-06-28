@@ -33,22 +33,28 @@ const { authRateLimiter, chatRateLimiter } = require('./src/middleware/rateLimit
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS – allow local dev and any production origin set via FRONTEND_URL
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
-];
+// CORS – allow all origins
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. Postman, server-to-server)
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-      return callback(null, true);
-    }
-    callback(new Error(`CORS: Origin ${origin} not allowed`));
-  },
+  origin: '*',
   credentials: true,
 }));
+// rely on express.json() for JSON parsing
+
+
+// Request logger middleware – logs route, method, user ID, execution time, and errors
+const requestLogger = (req, res, next) => {
+  const start = Date.now();
+  const userId = req.user?.id || 'anonymous';
+  console.log(`[REQ] ${req.method} ${req.originalUrl} (user=${userId})`);
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[RESP] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+};
+
+// Insert middleware chain
+app.use(requestLogger);
 app.use(express.json());
 app.use(morgan('dev'));
 

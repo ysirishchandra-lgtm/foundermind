@@ -17,6 +17,7 @@ async function request(path, options = {}) {
 
   const headers = {
     'Content-Type': 'application/json',
+    'bypass-tunnel-reminder': '1',
     ...options.headers,
   };
 
@@ -24,7 +25,8 @@ async function request(path, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`/api${path}`, {
+  const baseUrl = import.meta.env.VITE_API_URL || '';
+  const response = await fetch(`${baseUrl}/api${path}`, {
     ...options,
     headers,
   });

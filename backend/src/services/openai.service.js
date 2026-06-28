@@ -1,27 +1,31 @@
 /**
- * OpenAI Service – Milestone 4
+ * AI Service – Ollama (Local, 100% Free)
  *
- * Production-ready wrapper around the OpenAI Node SDK.
+ * Uses your locally-installed Ollama AI models.
+ * No API key needed. No internet. No payment. Runs on your own PC!
+ *
  * Features:
  *   - Configurable model via environment variable
- *   - Graceful error handling with typed error classes
- *   - Retry logic for transient (rate-limit / network) failures
+ *   - Graceful error handling
+ *   - Retry logic for transient failures
  *   - Full token usage reporting
- *   - Streaming-ready architecture (swap stream: false → true when ready)
  */
 
 const OpenAI = require('openai');
 
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000; // base delay, doubles on each retry
+const RETRY_DELAY_MS = 1000;
 
 class OpenAIService {
   constructor() {
+    // Ollama exposes an OpenAI-compatible API at localhost:11434
+    // No API key needed for local Ollama!
     this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      maxRetries: 0, // we handle retries ourselves for better observability
+      apiKey: 'ollama', // Ollama doesn't need a real key, just a non-empty string
+      baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+      maxRetries: 0,
     });
-    this.defaultModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    this.defaultModel = process.env.OPENAI_MODEL || 'qwen2.5-coder:1.5b';
   }
 
   /**
@@ -90,6 +94,53 @@ class OpenAIService {
     const err = new Error(`OpenAI request failed after ${MAX_RETRIES} attempts: ${message}`);
     err.statusCode = lastError?.status || 502;
     throw err;
+  }
+  /**
+   * Streaming completion – yields tokens as they arrive.
+   * The caller is responsible for writing SSE chunks to the response.
+   *
+   * @param {Array<{role, content}>} messages
+   * @param {string|null} model
+   * @yields {string} Each token/chunk as it arrives
+   * @returns {{ tokens: number, promptTokens: number, completionTokens: number, model: string }}
+   */
+  async *streamResponse(messages, model = null) {
+    const selectedModel = model || this.defaultModel;
+
+    const stream = await this.client.chat.completions.create({
+      model: selectedModel,
+      messages,
+      temperature: 0.7,
+      stream: true,
+    });
+
+    let fullContent = '';
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let finalModel = selectedModel;
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (delta) {
+        fullContent += delta;
+        yield delta;
+      }
+      // Capture usage if provided in final chunk
+      if (chunk.usage) {
+        promptTokens = chunk.usage.prompt_tokens ?? 0;
+        completionTokens = chunk.usage.completion_tokens ?? 0;
+      }
+      if (chunk.model) finalModel = chunk.model;
+    }
+
+    return {
+      content: fullContent,
+      model: finalModel,
+      tokens: promptTokens + completionTokens,
+      promptTokens,
+      completionTokens,
+      finishReason: 'stop',
+    };
   }
 }
 

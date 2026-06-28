@@ -21,7 +21,9 @@ export default function Chat() {
   const [sending,         setSending]         = useState(false);
   const [error,           setError]           = useState('');
 
-  const messagesEndRef = useRef(null);
+  const messagesEndRef   = useRef(null);
+  const messagesAreaRef  = useRef(null);
+  const userJustSentRef  = useRef(false);
 
   // ── Load conversations on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -29,10 +31,20 @@ export default function Chat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Auto-scroll to latest message ───────────────────────────────────────
+  // ── Smart auto-scroll ────────────────────────────────────────────────────
+  // Only scroll to bottom when: user just sent a message, OR they're already
+  // within 150 px of the bottom (so reading history is never interrupted).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const area = messagesAreaRef.current;
+    if (!area) return;
+    const distFromBottom = area.scrollHeight - area.scrollTop - area.clientHeight;
+    const nearBottom = distFromBottom < 150;
+
+    if (userJustSentRef.current || nearBottom) {
+      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+      userJustSentRef.current = false;
+    }
+  }, [messages, sending]);
 
   const fetchConversations = async () => {
     try {
@@ -62,7 +74,7 @@ export default function Chat() {
       setLoadingMessages(true);
       const data = await api.get(`/messages/${convId}?limit=50`);
       // Messages come back newest-first from API, so reverse for display
-      const msgs = (data.data || []).reverse();
+      const msgs = data.data || [];
       setMessages(msgs);
     } catch (err) {
       console.error('Failed to load messages:', err.message);
@@ -105,6 +117,7 @@ export default function Chat() {
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || sending) return;
+    userJustSentRef.current = true; // tell smart-scroll to snap to bottom
 
     // Ensure there's an active conversation
     let convId = activeConvId;
@@ -132,21 +145,84 @@ export default function Chat() {
       content: userText,
       created_at: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, optimisticMsg]);
+    // Placeholder for AI response that streams in word-by-word
+    const streamingId = `streaming-${Date.now()}`;
+    const streamingPlaceholder = {
+      id: streamingId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      _streaming: true,
+    };
+
+    setMessages(prev => [...prev, optimisticMsg, streamingPlaceholder]);
     setSending(true);
 
     try {
-      const data = await api.post('/chat', { conversationId: convId, message: userText });
-      const { userMessage, assistantMessage, meta: _meta } = data.data;
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('foundermind_token');
 
-      // Replace optimistic message with real one + add AI response
+      const response = await fetch(`${baseUrl}/api/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'bypass-tunnel-reminder': '1',
+        },
+        body: JSON.stringify({ conversationId: convId, message: userText }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalUserMsg = null;
+      let finalAssistantMsg = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop(); // keep incomplete chunk
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = JSON.parse(line.slice(6));
+
+          if (payload.token !== undefined) {
+            // Append streaming token to placeholder
+            setMessages(prev => prev.map(m =>
+              m.id === streamingId
+                ? { ...m, content: m.content + payload.token }
+                : m
+            ));
+          }
+
+          if (payload.done) {
+            finalUserMsg = payload.userMessage;
+            finalAssistantMsg = payload.assistantMessage;
+          }
+
+          if (payload.error) {
+            throw new Error(payload.error);
+          }
+        }
+      }
+
+      // Replace optimistic + streaming placeholder with real persisted messages
       setMessages(prev => [
-        ...prev.filter(m => m.id !== optimisticMsg.id),
-        userMessage,
-        assistantMessage,
+        ...prev.filter(m => m.id !== optimisticMsg.id && m.id !== streamingId),
+        ...(finalUserMsg ? [finalUserMsg] : []),
+        ...(finalAssistantMsg ? [finalAssistantMsg] : []),
       ]);
 
-      // Update conversation updated_at in sidebar
+      // Bubble conversation to top of sidebar
       setConversations(prev =>
         prev.map(c => c.id === convId ? { ...c, updated_at: new Date().toISOString() } : c)
           .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
@@ -154,8 +230,7 @@ export default function Chat() {
 
     } catch (err) {
       setError(err.message || 'Failed to get AI response. Please try again.');
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id && m.id !== streamingId));
     } finally {
       setSending(false);
     }
@@ -214,7 +289,7 @@ export default function Chat() {
       {/* Main Chat Area */}
       <div className="chat-main glass-card">
         {/* Messages */}
-        <div className="chat-messages">
+        <div className="chat-messages" ref={messagesAreaRef}>
           {!activeConvId && !loadingConvs && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: 'var(--text-secondary)' }}>
               <Brain size={48} style={{ opacity: 0.3 }} />

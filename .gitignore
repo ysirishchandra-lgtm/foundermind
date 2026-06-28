@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+
+# Environment variables
+backend/.env
+
+# Tunnels and cloudflare binaries
+cloudflared.exe
+tunnel.txt
+
+# Test / debug scripts
+backend/test_chat.js
+backend/run_migration.js
+tunnel.js
+
+
+

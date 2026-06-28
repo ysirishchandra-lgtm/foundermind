@@ -3,6 +3,14 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const userService = require('../services/userService');
 
+// Verify critical env variables at module load time
+const requiredEnv = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'JWT_SECRET'];
+requiredEnv.forEach(key => {
+  if (!process.env[key]) {
+    console.warn(`[WARNING] Missing environment variable ${key}`);
+  }
+});
+
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
@@ -26,19 +34,29 @@ const generateToken = (user) => {
 
 const register = async (req, res, next) => {
   try {
-    const { name, email, password } = registerSchema.parse(req.body);
+    console.log('--- Register endpoint called ---');
+    console.log('Incoming request body:', req.body);
+
+    const parsed = registerSchema.parse(req.body);
+    console.log('Validation successful, parsed payload:', parsed);
+    const { name, email, password } = parsed;
 
     const existingUser = await userService.findUserByEmail(email);
+    console.log('Existing user lookup result:', existingUser);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     const salt = await bcrypt.genSalt(10);
+    console.log('Generated bcrypt salt');
     const passwordHash = await bcrypt.hash(password, salt);
+    console.log('Password hashed');
 
     const user = await userService.createUser(name, email, passwordHash);
+    console.log('Supabase createUser response:', user);
 
     const token = generateToken(user);
+    console.log('JWT generated');
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -50,6 +68,8 @@ const register = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.error('Error in register endpoint:', error);
+    // Propagate the error so the centralized error handler can format the response
     next(error);
   }
 };

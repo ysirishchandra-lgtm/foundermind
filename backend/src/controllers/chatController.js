@@ -72,4 +72,77 @@ const chat = async (req, res, next) => {
   }
 };
 
-module.exports = { chat };
+/**
+ * POST /api/chat/stream
+ *
+ * Streaming version – returns Server-Sent Events (text/event-stream).
+ * The frontend reads tokens as they arrive and renders them word-by-word.
+ */
+const chatStream = async (req, res, next) => {
+  try {
+    const { conversationId, message } = chatSchema.parse(req.body);
+    const userId = req.user.id;
+
+    // 1. Verify conversation belongs to user
+    const conversation = await conversationService.getConversation(conversationId, userId);
+    if (!conversation) {
+      return res.status(403).json({ success: false, error: 'Access denied or conversation not found' });
+    }
+
+    // 2. Load history
+    const historyResult = await messageService.listMessages(conversationId, userId, { page: 1, limit: 20 });
+    const history = historyResult?.data || [];
+
+    // 3. Persist user message immediately
+    const userMessage = await messageService.createMessage(conversationId, userId, {
+      role: 'user',
+      content: message,
+    });
+
+    // 4. Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.flushHeaders();
+
+    // 5. Stream tokens
+    let fullContent = '';
+
+
+    try {
+      const tokenStream = chatService.streamMessage(userId, conversationId, history, message);
+
+      for await (const token of tokenStream) {
+        fullContent += token;
+        res.write(`data: ${JSON.stringify({ token })}\n\n`);
+      }
+    } catch (streamErr) {
+      res.write(`data: ${JSON.stringify({ error: streamErr.message })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // 6. Persist assistant message
+    const assistantMessage = await messageService.createMessage(conversationId, userId, {
+      role: 'assistant',
+      content: fullContent,
+    });
+
+    // 7. Touch conversation
+    await conversationService.updateConversation(conversationId, userId, {});
+
+    // 8. Send done event with full message for client to store
+    res.write(`data: ${JSON.stringify({ done: true, userMessage, assistantMessage })}\n\n`);
+    res.end();
+  } catch (err) {
+    if (!res.headersSent) {
+      next(err);
+    } else {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    }
+  }
+};
+
+module.exports = { chat, chatStream };

@@ -15,7 +15,7 @@
  * is never accidentally blocked.
  */
 
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -55,8 +55,9 @@ const authRateLimiter = rateLimit({
   standardHeaders: true,  // Return RateLimit-* headers
   legacyHeaders: false,
   message: `Too many authentication attempts. Please wait ${humanWindow(AUTH_WINDOW)} before trying again.`,
+  keyGenerator: ipKeyGenerator,
   handler: makeHandler('Auth'),
-  keyGenerator: (req) => req.ip,
+
   skip: () => false,
 });
 
@@ -72,9 +73,9 @@ const chatRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: `You have sent too many messages. Please wait ${humanWindow(CHAT_WINDOW)} before continuing.`,
-  handler: makeHandler('Chat'),
-  // Use authenticated userId when available, fall back to IP
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
+  // Use authenticated userId when available, fall back to safe IP
+
   skip: () => false,
 });
 
