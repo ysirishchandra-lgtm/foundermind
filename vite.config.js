@@ -11,6 +11,11 @@ export default defineConfig({
         changeOrigin: true,
         timeout: 300000,
         proxyTimeout: 300000,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('connection', 'keep-alive');
+          });
+        },
       }
     }
   }
