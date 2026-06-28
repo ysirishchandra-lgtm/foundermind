@@ -13,6 +13,7 @@ const openaiService = require('./openai.service');
 const hindsightService = require('./hindsight.service');
 const cascadeflowService = require('./cascadeflow.service');
 const { SYSTEM_PROMPT, buildMemoryPrefix } = require('../prompts/system.prompt');
+const userService = require('./userService');
 
 class ChatService {
   /**
@@ -27,20 +28,23 @@ class ChatService {
   async processMessage(userId, conversationId, history, userMessage) {
     const startTime = Date.now();
 
-    // ── Step 1: Recall persistent memory context ────────────────────────────
-    const memoryContext = await hindsightService.recallMemory(userId, userMessage);
+    // ── Step 1: Run Hindsight recall, model routing, and fetch user profile in parallel for speed
+    const [memoryContext, routingDecision, userProfile] = await Promise.all([
+      hindsightService.recallMemory(userId, userMessage),
+      Promise.resolve(cascadeflowService.routeRequest(userMessage, history)),
+      userService.findUserById(userId).catch(() => null),
+    ]);
     const memoryPrefix  = buildMemoryPrefix(memoryContext);
-
-    // ── Step 2: Determine model via CascadeFlow routing ─────────────────────
-    const routingDecision = cascadeflowService.routeRequest(userMessage, history);
     let selectedModel = routingDecision.model;
     let routingReason = routingDecision.reason;
     let isFallbackUsed = false;
+    const userName = userProfile?.name || 'Founder';
 
-    // ── Step 3: Build the full messages array ────────────────────────────────
+    // ── Step 3: Build the full messages array with explicit names to prevent confusion ────────────────────────────────
+    const personalizedPrompt = `Your name is FounderMind. You are talking to the founder whose name is ${userName}.\n\n` + SYSTEM_PROMPT;
     const systemContent = memoryPrefix
-      ? SYSTEM_PROMPT + '\n\n' + memoryPrefix
-      : SYSTEM_PROMPT;
+      ? personalizedPrompt + '\n\n' + memoryPrefix
+      : personalizedPrompt;
 
     const messages = [
       { role: 'system', content: systemContent },
@@ -115,18 +119,21 @@ class ChatService {
    *   const { content, model } = gen.return().value (captured internally)
    */
   async *streamMessage(userId, conversationId, history, userMessage) {
-    // Step 1: Run Hindsight recall and model routing in parallel for speed
-    const [memoryContext, routingDecision] = await Promise.all([
+    // Step 1: Run Hindsight recall, model routing, and fetch user profile in parallel for speed
+    const [memoryContext, routingDecision, userProfile] = await Promise.all([
       hindsightService.recallMemory(userId, userMessage),
       Promise.resolve(cascadeflowService.routeRequest(userMessage, history)),
+      userService.findUserById(userId).catch(() => null),
     ]);
     const memoryPrefix  = buildMemoryPrefix(memoryContext);
     const selectedModel = routingDecision.model;
+    const userName = userProfile?.name || 'Founder';
 
-    // Step 2: Build messages
+    // Step 2: Build messages with name context
+    const personalizedPrompt = `Your name is FounderMind. You are talking to the founder whose name is ${userName}.\n\n` + SYSTEM_PROMPT;
     const systemContent = memoryPrefix
-      ? SYSTEM_PROMPT + '\n\n' + memoryPrefix
-      : SYSTEM_PROMPT;
+      ? personalizedPrompt + '\n\n' + memoryPrefix
+      : personalizedPrompt;
 
     const messages = [
       { role: 'system', content: systemContent },
