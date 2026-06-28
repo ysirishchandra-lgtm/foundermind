@@ -61,8 +61,8 @@ class OpenAIService {
         const completion = await this.client.chat.completions.create({
           model: selectedModel,
           messages,
-          temperature: 0.7,
-          // stream: false,  // flip to true for streaming (Milestone 6+)
+          temperature: 0.3,
+          max_tokens: 512,
         });
 
         const choice = completion.choices[0];
@@ -110,7 +110,8 @@ class OpenAIService {
     const stream = await this.client.chat.completions.create({
       model: selectedModel,
       messages,
-      temperature: 0.7,
+      temperature: 0.3,
+      max_tokens: 512,
       stream: true,
     });
 
