@@ -22,7 +22,7 @@ class OpenAIService {
     // No API key needed for local Ollama!
     this.client = new OpenAI({
       apiKey: 'ollama', // Ollama doesn't need a real key, just a non-empty string
-      baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+      baseURL: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
       maxRetries: 0,
     });
     this.defaultModel = process.env.OPENAI_MODEL || 'qwen2.5-coder:1.5b';
