@@ -57,8 +57,6 @@ class UserService {
       throw new Error('No valid fields to update.');
     }
 
-    sanitized.updated_at = new Date().toISOString();
-
     const { data, error } = await supabase
       .from('users')
       .update(sanitized)
