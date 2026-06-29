@@ -5,23 +5,18 @@ const REQUIRED_ENV_VARS = [
   'JWT_SECRET',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_KEY',
-  'OPENAI_API_KEY',
-  'HINDSIGHT_API_KEY'
 ];
 const missingVars = REQUIRED_ENV_VARS.filter(v => !process.env[v]);
 if (missingVars.length > 0) {
-  console.warn(`\x1b[33m[WARNING] Missing vital environment variables: ${missingVars.join(', ')}\x1b[0m`);
-  console.warn('FounderMind may fail to route requests, authenticate users, or connect to the database.');
-} else {
-  console.log('[DIAGNOSTICS] All required environment variables are present.');
+  console.warn(`[WARNING] Missing vital environment variables: ${missingVars.join(', ')}`);
 }
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const morgan = require('morgan');
 const { errorHandler } = require('./src/middleware/errorMiddleware');
 const authRoutes = require('./src/routes/authRoutes');
-
 const conversationRoutes = require('./src/routes/conversationRoutes');
 const messageRoutes = require('./src/routes/messageRoutes');
 const taskRoutes = require('./src/routes/taskRoutes');
@@ -34,47 +29,57 @@ const { authRateLimiter, chatRateLimiter } = require('./src/middleware/rateLimit
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isDev = process.env.NODE_ENV !== 'production';
 
-// CORS – allow Vercel production + localhost dev origins with credentials
+// ── Security Headers (helmet) ──────────────────────────────────────────────
+app.use(helmet({
+  crossOriginEmbedderPolicy: false, // Allow Vercel preview embeddings
+  contentSecurityPolicy: false,     // Managed at CDN layer
+}));
+
+// ── CORS ──────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   'https://foundermind.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
 ];
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (curl, mobile, server-side)
-    if (!origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o))) {
+    // Allow requests with no origin (server-to-server, mobile apps, curl)
+    if (!origin) return callback(null, true);
+    
+    // Allow any Vercel preview deployment for this project
+    const isVercelPreview = origin.includes('foundermind') && origin.includes('vercel.app');
+    const isAllowedOrigin = ALLOWED_ORIGINS.includes(origin);
+    const isLocalTunnel = isDev && (origin.includes('loca.lt') || origin.includes('ngrok.io'));
+
+    if (isAllowedOrigin || isVercelPreview || isLocalTunnel) {
       callback(null, true);
     } else {
-      callback(null, true); // permissive for tunnel/preview URLs
+      callback(new Error(`CORS: Origin ${origin} not allowed`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'bypass-tunnel-reminder'],
 }));
-// rely on express.json() for JSON parsing
 
+// ── Body Parsing ──────────────────────────────────────────────────────────
+app.use(express.json({ limit: '1mb' })); // Prevent oversized payloads
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
-// Request logger middleware – logs route, method, user ID, execution time, and errors
-const requestLogger = (req, res, next) => {
-  const start = Date.now();
-  const userId = req.user?.id || 'anonymous';
-  console.log(`[REQ] ${req.method} ${req.originalUrl} (user=${userId})`);
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`[RESP] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
-  });
-  next();
-};
+// ── Request Logging ───────────────────────────────────────────────────────
+if (isDev) {
+  app.use(morgan('dev'));
+} else {
+  // In production, use minimal Apache-style format (no sensitive body logging)
+  app.use(morgan('combined', {
+    skip: (req) => req.url === '/api/health', // Don't log health checks
+  }));
+}
 
-// Insert middleware chain
-app.use(requestLogger);
-app.use(express.json());
-app.use(morgan('dev'));
-
-// Routes (with targeted rate limiting on sensitive endpoints)
+// ── Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth',          authRateLimiter, authRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/messages',      messageRoutes);
@@ -85,17 +90,27 @@ app.use('/api/analytics',     analyticsRoutes);
 app.use('/api/documents',     documentRoutes);
 app.use('/api/meetings',      meetingRoutes);
 
-// Health check endpoint
+// ── Health Check ──────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'FounderMind Backend API is running' });
+  res.json({
+    status: 'ok',
+    message: 'FounderMind Backend API is running',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Centralized error handling
+// ── 404 handler ───────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ success: false, error: `Route not found: ${req.method} ${req.path}` });
+});
+
+// ── Centralized Error Handling ────────────────────────────────────────────
 app.use(errorHandler);
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`[Server] FounderMind running on port ${PORT} (${isDev ? 'development' : 'production'})`);
   });
 }
 

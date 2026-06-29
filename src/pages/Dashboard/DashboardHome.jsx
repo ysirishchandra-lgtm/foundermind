@@ -25,6 +25,7 @@ export default function DashboardHome() {
   const [tasks, setTasks] = useState([]);
   const [chats, setChats] = useState([]);
   const [memories, setMemories] = useState([]);
+  const [meetings, setMeetings] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   
   const [loading, setLoading] = useState(true);
@@ -34,17 +35,19 @@ export default function DashboardHome() {
       setLoading(true);
       
       // Perform parallel requests
-      const [tasksRes, chatsRes, memoriesRes, analyticsRes] = await Promise.allSettled([
+      const [tasksRes, chatsRes, memoriesRes, analyticsRes, meetingsRes] = await Promise.allSettled([
         api.get('/tasks?status=todo&limit=3'),
         api.get('/conversations?limit=3'),
         api.get('/memory'),
-        api.get('/analytics/dashboard')
+        api.get('/analytics/dashboard'),
+        api.get('/meetings?limit=3'),
       ]);
 
       if (tasksRes.status === 'fulfilled') setTasks(tasksRes.value.data || []);
       if (chatsRes.status === 'fulfilled') setChats(chatsRes.value.data || []);
       if (memoriesRes.status === 'fulfilled') setMemories(memoriesRes.value.data || []);
       if (analyticsRes.status === 'fulfilled') setAnalytics(analyticsRes.value.data);
+      if (meetingsRes.status === 'fulfilled') setMeetings(meetingsRes.value.data || []);
 
     } catch (err) {
       console.error('Error fetching dashboard content:', err);
@@ -153,13 +156,32 @@ export default function DashboardHome() {
         <div className="glass-card widget-card">
           <div className="widget-header">
             <div className="widget-title"><Calendar size={18} /> Upcoming Meetings</div>
-            <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => navigate('/dashboard/meetings')}>View Calendar</button>
+            <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => navigate('/dashboard/meetings')}>View All</button>
           </div>
           <div className="widget-content">
-            <EmptyState 
-              title="No meetings scheduled" 
-              description="Integrate your external calendar context inside settings."
-            />
+            {loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px' }}>
+                <Skeleton height="35px" />
+                <Skeleton height="35px" />
+              </div>
+            ) : meetings.length === 0 ? (
+              <EmptyState
+                title="No meetings scheduled"
+                description="Add a meeting to stay on top of your schedule."
+                actionText="Schedule Meeting"
+                onAction={() => navigate('/dashboard/meetings')}
+              />
+            ) : (
+              meetings.map(meeting => (
+                <div key={meeting.id} className="list-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/dashboard/meetings')}>
+                  <div className="item-left">
+                    <span className="item-title">{meeting.title}</span>
+                    <span className="item-meta">{meeting.date} · {meeting.time} · {meeting.attendees} attendees</span>
+                  </div>
+                  <ArrowRight size={16} className="text-secondary" />
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

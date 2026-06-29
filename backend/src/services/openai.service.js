@@ -1,55 +1,54 @@
 /**
- * AI Service – Ollama (Local, 100% Free)
+ * AI Service – Hybrid OpenAI / Ollama Client
  *
- * Uses your locally-installed Ollama AI models.
- * No API key needed. No internet. No payment. Runs on your own PC!
+ * Production: Uses OpenAI cloud API (gpt-4o-mini / gpt-4o)
+ * Development: Falls back to local Ollama if OPENAI_API_KEY not set
  *
  * Features:
- *   - Configurable model via environment variable
- *   - Graceful error handling
- *   - Retry logic for transient failures
- *   - Full token usage reporting
+ *   - Exponential back-off retry on transient failures
+ *   - Streaming support via async generators
+ *   - Token usage reporting
+ *   - Configurable max_tokens for quality responses
  */
 
 const OpenAI = require('openai');
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+// Generous token limits for quality AI responses
+const DEFAULT_MAX_TOKENS = 1500;
+const STREAM_MAX_TOKENS  = 2048;
+// Abort streaming after 45 seconds to prevent zombie connections
+const STREAM_TIMEOUT_MS  = 45_000;
 
 class OpenAIService {
   constructor() {
     const hasApiKey = !!process.env.OPENAI_API_KEY;
+    this.isCloud = hasApiKey;
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY || 'ollama',
-      baseURL: hasApiKey ? undefined : (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1'),
-      maxRetries: 0,
+      baseURL: hasApiKey
+        ? undefined
+        : (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1'),
+      maxRetries: 0, // Handled manually with exponential back-off
     });
-    this.defaultModel = process.env.OPENAI_MODEL || (hasApiKey ? 'gpt-4o-mini' : 'qwen2.5-coder:1.5b');
+    this.defaultModel = process.env.OPENAI_MODEL ||
+      (hasApiKey ? 'gpt-4o-mini' : 'qwen2.5-coder:1.5b');
   }
 
-  /**
-   * Sleep helper for retry back-off.
-   */
   _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  /**
-   * Classify whether an OpenAI error is worth retrying.
-   */
   _isRetryable(error) {
-    if (error instanceof OpenAI.APIConnectionError) return true;
-    if (error instanceof OpenAI.RateLimitError) return true;
+    if (error instanceof OpenAI.APIConnectionError)  return true;
+    if (error instanceof OpenAI.RateLimitError)      return true;
     if (error instanceof OpenAI.InternalServerError) return true;
     return false;
   }
 
   /**
-   * Core completion call with retry logic.
-   *
-   * @param {Array<{role: string, content: string}>} messages - Full message history
-   * @param {string} model - Model override (default: OPENAI_MODEL env var)
-   * @returns {{ content: string, model: string, tokens: number, promptTokens: number, completionTokens: number }}
+   * Core non-streaming completion with retry + exponential back-off.
    */
   async generateResponse(messages, model = null) {
     const selectedModel = model || this.defaultModel;
@@ -60,87 +59,87 @@ class OpenAIService {
         const completion = await this.client.chat.completions.create({
           model: selectedModel,
           messages,
-          temperature: 0.3,
-          max_tokens: 300,
+          temperature: 0.4,
+          max_tokens: DEFAULT_MAX_TOKENS,
         });
 
         const choice = completion.choices[0];
-        const usage = completion.usage;
+        const usage  = completion.usage;
 
         return {
-          content: choice.message.content,
-          model: completion.model,
-          tokens: usage?.total_tokens ?? 0,
-          promptTokens: usage?.prompt_tokens ?? 0,
-          completionTokens: usage?.completion_tokens ?? 0,
-          finishReason: choice.finish_reason,
+          content:           choice.message.content,
+          model:             completion.model,
+          tokens:            usage?.total_tokens      ?? 0,
+          promptTokens:      usage?.prompt_tokens     ?? 0,
+          completionTokens:  usage?.completion_tokens ?? 0,
+          finishReason:      choice.finish_reason,
         };
       } catch (error) {
         lastError = error;
 
-        if (!this._isRetryable(error) || attempt === MAX_RETRIES) {
-          break;
-        }
+        if (!this._isRetryable(error) || attempt === MAX_RETRIES) break;
 
         const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-        console.warn(`[OpenAI] Attempt ${attempt} failed (${error.constructor.name}). Retrying in ${delay}ms...`);
+        console.warn(`[AI] Attempt ${attempt}/${MAX_RETRIES} failed (${error.constructor.name}). Retry in ${delay}ms…`);
         await this._sleep(delay);
       }
     }
 
-    // Surface a clean error after all retries exhausted
-    const message = lastError?.message || 'Unknown OpenAI error';
-    const err = new Error(`OpenAI request failed after ${MAX_RETRIES} attempts: ${message}`);
+    const message = lastError?.message || 'Unknown AI error';
+    const err = new Error(`AI request failed after ${MAX_RETRIES} attempts: ${message}`);
     err.statusCode = lastError?.status || 502;
     throw err;
   }
+
   /**
-   * Streaming completion – yields tokens as they arrive.
-   * The caller is responsible for writing SSE chunks to the response.
+   * Streaming completion — yields token chunks.
+   * Times out after STREAM_TIMEOUT_MS to prevent zombie connections.
    *
-   * @param {Array<{role, content}>} messages
-   * @param {string|null} model
    * @yields {string} Each token/chunk as it arrives
-   * @returns {{ tokens: number, promptTokens: number, completionTokens: number, model: string }}
    */
   async *streamResponse(messages, model = null) {
     const selectedModel = model || this.defaultModel;
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), STREAM_TIMEOUT_MS);
 
-    const stream = await this.client.chat.completions.create({
-      model: selectedModel,
-      messages,
-      temperature: 0.3,
-      max_tokens: 128,
-      stream: true,
-    });
+    try {
+      const stream = await this.client.chat.completions.create({
+        model: selectedModel,
+        messages,
+        temperature: 0.4,
+        max_tokens: STREAM_MAX_TOKENS,
+        stream: true,
+      }, { signal: abortController.signal });
 
-    let fullContent = '';
-    let promptTokens = 0;
-    let completionTokens = 0;
-    let finalModel = selectedModel;
+      let fullContent = '';
+      let promptTokens = 0;
+      let completionTokens = 0;
+      let finalModel = selectedModel;
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta?.content;
-      if (delta) {
-        fullContent += delta;
-        yield delta;
+      for await (const chunk of stream) {
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullContent += delta;
+          yield delta;
+        }
+        if (chunk.usage) {
+          promptTokens     = chunk.usage.prompt_tokens     ?? 0;
+          completionTokens = chunk.usage.completion_tokens ?? 0;
+        }
+        if (chunk.model) finalModel = chunk.model;
       }
-      // Capture usage if provided in final chunk
-      if (chunk.usage) {
-        promptTokens = chunk.usage.prompt_tokens ?? 0;
-        completionTokens = chunk.usage.completion_tokens ?? 0;
-      }
-      if (chunk.model) finalModel = chunk.model;
+
+      return {
+        content: fullContent,
+        model:   finalModel,
+        tokens:  promptTokens + completionTokens,
+        promptTokens,
+        completionTokens,
+        finishReason: 'stop',
+      };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return {
-      content: fullContent,
-      model: finalModel,
-      tokens: promptTokens + completionTokens,
-      promptTokens,
-      completionTokens,
-      finishReason: 'stop',
-    };
   }
 }
 
