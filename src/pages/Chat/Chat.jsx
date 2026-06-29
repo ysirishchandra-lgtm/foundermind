@@ -234,7 +234,13 @@ export default function Chat() {
       );
 
     } catch (err) {
-      setError(err.message || 'Failed to get AI response. Please try again.');
+      const isConfigError = err.message?.includes('provider is not configured') || 
+                            err.message?.includes('Connection error') || 
+                            err.message?.includes('fetch failed');
+      const friendlyMsg = isConfigError 
+        ? 'AI service is temporarily unavailable. Please try again later.' 
+        : (err.message || 'Failed to get AI response. Please try again.');
+      setError(friendlyMsg);
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id && m.id !== streamingId));
     } finally {
       setSending(false);

@@ -24,7 +24,11 @@ const STREAM_TIMEOUT_MS  = 45_000;
 class OpenAIService {
   constructor() {
     const hasApiKey = !!process.env.OPENAI_API_KEY;
-    this.isCloud = hasApiKey;
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+    
+    // Only allow Ollama fallback outside of production environment
+    this.isConfigured = hasApiKey || !isProd;
+    
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY || 'ollama',
       baseURL: hasApiKey
@@ -51,6 +55,13 @@ class OpenAIService {
    * Core non-streaming completion with retry + exponential back-off.
    */
   async generateResponse(messages, model = null) {
+    if (!this.isConfigured) {
+      console.error('[AI Service] ERROR: OPENAI_API_KEY is not configured in production. Local Ollama fallback is disabled.');
+      const err = new Error('AI provider is not configured.');
+      err.statusCode = 400;
+      throw err;
+    }
+
     const selectedModel = model || this.defaultModel;
     let lastError;
 
@@ -98,6 +109,13 @@ class OpenAIService {
    * @yields {string} Each token/chunk as it arrives
    */
   async *streamResponse(messages, model = null) {
+    if (!this.isConfigured) {
+      console.error('[AI Service] ERROR: OPENAI_API_KEY is not configured in production. Local Ollama fallback is disabled.');
+      const err = new Error('AI provider is not configured.');
+      err.statusCode = 400;
+      throw err;
+    }
+
     const selectedModel = model || this.defaultModel;
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), STREAM_TIMEOUT_MS);
