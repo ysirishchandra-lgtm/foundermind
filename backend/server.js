@@ -28,6 +28,8 @@ const taskRoutes = require('./src/routes/taskRoutes');
 const chatRoutes = require('./src/routes/chatRoutes');
 const memoryRoutes = require('./src/routes/memoryRoutes');
 const analyticsRoutes = require('./src/routes/analyticsRoutes');
+const documentRoutes = require('./src/routes/documentRoutes');
+const meetingRoutes = require('./src/routes/meetingRoutes');
 const { authRateLimiter, chatRateLimiter } = require('./src/middleware/rateLimit');
 
 const app = express();
@@ -80,6 +82,8 @@ app.use('/api/tasks',         taskRoutes);
 app.use('/api/chat',          chatRateLimiter, chatRoutes);
 app.use('/api/memory',        memoryRoutes);
 app.use('/api/analytics',     analyticsRoutes);
+app.use('/api/documents',     documentRoutes);
+app.use('/api/meetings',      meetingRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
