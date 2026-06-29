@@ -159,7 +159,12 @@ export default function Chat() {
     setSending(true);
 
     try {
-      const baseUrl = import.meta.env.VITE_API_URL || '';
+      let baseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+      if (baseUrl.endsWith('/api')) {
+        baseUrl = baseUrl.slice(0, -4);
+      } else if (baseUrl.endsWith('/api/')) {
+        baseUrl = baseUrl.slice(0, -5);
+      }
       const token = localStorage.getItem('foundermind_token');
 
       const response = await fetch(`${baseUrl}/api/chat/stream`, {

@@ -39,88 +39,77 @@ export default function Login() {
   };
 
   return (
-    <div
-      className="app-container"
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-color)' }}
-    >
-      <div className="glass-card animate-fade-up" style={{ width: '100%', maxWidth: '420px', padding: '48px' }}>
+    <div className="auth-container">
+      <div className="auth-bg-orb-1"></div>
+      <div className="auth-bg-orb-2"></div>
+
+      <div className="auth-card animate-fade-up">
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div className="logo" style={{ justifyContent: 'center', marginBottom: '16px' }}>
-            <Brain className="logo-icon" size={32} />
-            <span style={{ fontSize: '1.5rem' }}>FounderMind</span>
+          <div className="auth-logo-wrapper">
+            <Brain className="auth-logo-icon" size={36} />
+            <span className="auth-logo-text">FounderMind</span>
           </div>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Welcome Back</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>Log in to your Chief of Staff</p>
+          <h2 style={{ fontSize: '1.6rem', marginBottom: '8px', fontWeight: '700' }}>Welcome Back</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Log in to your Chief of Staff</p>
         </div>
 
         {error && (
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '12px 16px', borderRadius: '8px', marginBottom: '20px',
-              background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
-              color: '#ef4444', fontSize: '0.9rem',
-            }}
-          >
-            <AlertCircle size={16} />
+          <div className="auth-error-box">
+            <AlertCircle size={18} />
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+        <form onSubmit={handleLogin}>
+          <div className="auth-input-group">
+            <label className="auth-label" htmlFor="login-email">
               Work Email
             </label>
             <input
               id="login-email"
               type="email"
+              className="auth-input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="founder@startup.com"
               required
-              style={{
-                width: '100%', padding: '12px 16px', borderRadius: '8px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)',
-                color: 'white', outline: 'none',
-              }}
             />
           </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+          
+          <div className="auth-input-group">
+            <label className="auth-label" htmlFor="login-password">
               Password
             </label>
             <input
               id="login-password"
               type="password"
+              className="auth-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              style={{
-                width: '100%', padding: '12px 16px', borderRadius: '8px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)',
-                color: 'white', outline: 'none',
-              }}
             />
           </div>
 
           <button
             id="login-submit"
             type="submit"
-            className="btn btn-primary"
+            className="auth-submit-btn"
             disabled={loading}
-            style={{ width: '100%', marginTop: '8px', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
-            {loading ? <><Loader size={18} className="spin" /> Logging in...</> : <>Log In <ArrowRight size={18} /></>}
+            {loading ? (
+              <><Loader size={18} className="spin" /> Logging in...</>
+            ) : (
+              <>Log In <ArrowRight size={18} /></>
+            )}
           </button>
         </form>
 
-        <div style={{ marginTop: '32px', textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+        <div className="auth-link-text">
           Don&apos;t have an account?{' '}
           <span
             onClick={() => navigate('/signup')}
-            style={{ color: 'var(--accent-cyan)', cursor: 'pointer' }}
+            className="auth-link"
           >
             Sign up
           </span>

@@ -25,7 +25,12 @@ async function request(path, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const baseUrl = import.meta.env.VITE_API_URL || '';
+  let baseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+  if (baseUrl.endsWith('/api')) {
+    baseUrl = baseUrl.slice(0, -4);
+  } else if (baseUrl.endsWith('/api/')) {
+    baseUrl = baseUrl.slice(0, -5);
+  }
   const response = await fetch(`${baseUrl}/api${path}`, {
     ...options,
     headers,
